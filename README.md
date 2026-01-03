@@ -91,7 +91,7 @@ The gateway behavior is driven by **Service Properties** on your backend service
 
 ## License
 
-Released under **CC0 1.0 Universal** (Public Domain). You are free to use, modify, and distribute this software for any purpose, commercial or private, without attribution.
+Released under **Unlicense** (Public Domain). You are free to use, modify, and distribute this software for any purpose, commercial or private, without attribution.
 
 ## Disclaimer
 
