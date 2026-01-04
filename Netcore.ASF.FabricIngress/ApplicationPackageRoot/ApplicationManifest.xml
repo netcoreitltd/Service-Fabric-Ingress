@@ -32,8 +32,8 @@
   </DefaultServices>
   <Principals>
     <!-- <Users> -->
-      <!-- Do not enable this except for testing -->
-      <!-- <User Name="LocalSystemAccount" AccountType="LocalSystem" /> -->
+    <!-- Do not enable this except for testing -->
+    <!-- <User Name="LocalSystemAccount" AccountType="LocalSystem" /> -->
     <!-- </Users> -->
   </Principals>
 </ApplicationManifest>
