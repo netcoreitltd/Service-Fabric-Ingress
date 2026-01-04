@@ -15,7 +15,7 @@
     </EnvironmentOverrides>
     <Policies>
       <!-- Do not enable this except for testing -->
-      <RunAsPolicy CodePackageRef="Code" UserRef="LocalSystemAccount" EntryPointType="All" />
+      <!-- <RunAsPolicy CodePackageRef="Code" UserRef="LocalSystemAccount" EntryPointType="All" /> -->
     </Policies>
   </ServiceManifestImport>
   <DefaultServices>
@@ -33,7 +33,7 @@
   <Principals>
     <Users>
       <!-- Do not enable this except for testing -->
-      <User Name="LocalSystemAccount" AccountType="LocalSystem" />
+      <!-- <User Name="LocalSystemAccount" AccountType="LocalSystem" /> -->
     </Users>
   </Principals>
 </ApplicationManifest>
