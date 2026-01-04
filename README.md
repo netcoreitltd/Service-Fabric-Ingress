@@ -2,7 +2,7 @@
 
 A production-ready, Service Fabric–native reverse proxy and API gateway for on-premises Windows clusters. It provides Kubernetes-style HTTP/HTTPS ingress—exposing your microservices over a single public endpoint (ports 80/443) with dynamic host/path routing, automated Let's Encrypt SSL, and optional rate limiting.
 
-This project is designed for **standalone / bare-metal Windows Service Fabric clusters** where cloud-native ingress controllers (like Azure App Gateway) are unavailable. It replaces the built-in Service Fabric Reverse Proxy at the edge, offering a secure, tunable, and standards-based entry point for your applications. [web:1480][web:1137]
+This project is designed for **standalone / bare-metal Windows Service Fabric clusters** where cloud-native ingress controllers (like Azure App Gateway) are unavailable. It replaces the built-in Service Fabric Reverse Proxy at the edge, offering a secure, tunable, and standards-based entry point for your applications.
 
 ## Why this exists
 
@@ -29,19 +29,21 @@ Service Fabric's [built-in reverse proxy](https://learn.microsoft.com/en-us/azur
 
 ## Architecture
 
+```text
 Internet
 │
 ├─ HTTPS (443) ───> [ Service Fabric Ingress ] ───> [ Internal Backend Service ]
 │ (Stateless Gateway) (Dynamic Port / No Public Access)
 └─ HTTP (80) ─────> [ ACME Challenge Handler ]
+```
 
-The gateway runs on your edge nodes. It continuously monitors the Service Fabric Naming Service. When it detects a service with properties like `Yarp.Hosts` or `Yarp.Path`, it instantly reconfigures its internal routing table to forward traffic to that service's internal endpoints. [web:533]
+The gateway runs on your edge nodes. It continuously monitors the Service Fabric Naming Service. When it detects a service with properties like `Yarp.Hosts` or `Yarp.Path`, it instantly reconfigures its internal routing table to forward traffic to that service's internal endpoints.
 
 ## Getting Started
 
 ### Prerequisites
 - Windows Service Fabric Cluster (Standalone or Azure)
-- .NET 8+ installed on nodes
+- .NET 9+ installed on nodes
 - DNS pointed to your cluster IP (for SSL generation)
 
 ### Installation
@@ -82,12 +84,12 @@ The gateway behavior is driven by **Service Properties** on your backend service
 
 ## Limitations
 
-- **HTTP/3:** Disabled when using Let's Encrypt due to Kestrel technical limitations with ACME TLS callbacks. HTTP/2 is fully supported. [web:1368][web:1366]
+- **HTTP/3:** Disabled when using Let's Encrypt due to Kestrel technical limitations with ACME TLS callbacks. HTTP/2 is fully supported. 
 - **Stateful Services:** Currently supports Stateless services out-of-the-box. Stateful service routing requires custom partition resolution logic (planned).
 - **TCP/UDP:** This is a Layer 7 (HTTP) gateway. For raw TCP/UDP ingress, a separate solution is required.
 
 ## Azure Service Fabric Managed Clusters
-**Note:** If you are running **Azure Service Fabric Managed Clusters**, you should prefer using Azure-native solutions like [Azure Application Gateway](https://learn.microsoft.com/en-us/azure/service-fabric/how-to-managed-cluster-networking) or Azure Front Door. This project is optimized for scenarios where those managed services are not available (e.g., On-Premises). [web:1327]
+**Note:** If you are running **Azure Service Fabric Managed Clusters**, you should prefer using Azure-native solutions like [Azure Application Gateway](https://learn.microsoft.com/en-us/azure/service-fabric/how-to-managed-cluster-networking) or Azure Front Door. This project is optimized for scenarios where those managed services are not available (e.g., On-Premises). 
 
 ## License
 
