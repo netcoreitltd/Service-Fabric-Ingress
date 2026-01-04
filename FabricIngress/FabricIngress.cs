@@ -92,7 +92,17 @@ namespace ServiceFabricIngress
                             })
                             .ConfigureServices(services =>
                             {
+                                services.AddSingleton<StatelessServiceContext>(serviceContext);
+                                // Get Service Fabric context and config
+                                var config = serviceContext.CodePackageActivationContext.GetConfigurationPackageObject("Config");
 
+                                // Extrapolate settings from relevant section of Settings.xml
+                                var section = config.Settings.Sections["LettuceEncryptConfig"];
+                                string email = section.Parameters["EmailAddress"].Value;
+                                bool acceptTerms = bool.Parse(section.Parameters["AcceptTermsOfService"].Value);
+                                // this should not be here for maximum security. We will keep it here
+                                // to make deployments easier but it should be improved by using Service Fabric secrets
+                                string password = section.Parameters["PfxPassword"].Value;
                                 // === C. RATE LIMITING SERVICES ===
                                 // Definisci le "Policy" che i servizi SF potranno scegliere tramite property
                                 services.AddRateLimiter(options =>
@@ -154,11 +164,11 @@ namespace ServiceFabricIngress
 
                                 services.AddLettuceEncrypt(options =>
                                 {
-                                    options.AcceptTermsOfService = true;
-                                    options.EmailAddress = "admin@example.com";
-                                    options.AllowedChallengeTypes = ChallengeType.Http01;
+                                    options.EmailAddress = email;
+                                    options.AcceptTermsOfService = acceptTerms;
+                                    options.AllowedChallengeTypes = ChallengeType.Http01; // accept HTTP connections only
                                 })
-                                .PersistDataToDirectory(new DirectoryInfo(certPath), "P@sswordPerPFX!");
+                                .PersistDataToDirectory(new DirectoryInfo(certPath), password);
 
                                 services.AddOpenTelemetry()
                                 .ConfigureResource(r => r.AddService(serviceName))

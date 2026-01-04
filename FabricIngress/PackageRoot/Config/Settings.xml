@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <Settings xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.microsoft.com/2011/01/fabric">
-  <!-- Add your custom configuration sections and parameters here -->
-  <!--
-  <Section Name="MyConfigSection">
-    <Parameter Name="MyParameter" Value="Value1" />
-  </Section>
-  -->
+	<!-- Set default e-mail address and default password for Let's Encrypt certificates-->
+	<Section Name="LettuceEncryptConfig">
+		<Parameter Name="EmailAddress" Value="admin@example.com" />
+		<Parameter Name="AcceptTermsOfService" Value="true" />
+		<Parameter Name="PfxPassword" Value="P@sswordForPFX!" />
+	</Section>	
 </Settings>
