@@ -31,9 +31,9 @@
     </Service>
   </DefaultServices>
   <Principals>
-    <Users>
+    <!-- <Users> -->
       <!-- Do not enable this except for testing -->
       <!-- <User Name="LocalSystemAccount" AccountType="LocalSystem" /> -->
-    </Users>
+    <!-- </Users> -->
   </Principals>
 </ApplicationManifest>

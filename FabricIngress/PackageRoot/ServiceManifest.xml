@@ -12,6 +12,11 @@
 
   <!-- Code package is your service executable. -->
   <CodePackage Name="Code" Version="1.5.0">
+    <SetupEntryPoint>
+	    <ExeHost>
+		    <Program>Setup.bat</Program>
+        </ExeHost>
+    </SetupEntryPoint>	  
     <EntryPoint>
       <ExeHost>
         <Program>FabricIngress.exe</Program>
