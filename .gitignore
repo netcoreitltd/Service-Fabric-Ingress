@@ -1,6 +1,133 @@
 ﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+# Visual Studio (template GitHub) + VS2022 + Service Fabric + Copilot hygiene
+# Base: https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 ################################################################################
 
-/.vs/Service-Fabric-Ingress/CopilotIndices/17.14.1518.61961
-/.vs/Service-Fabric-Ingress/FileContentIndex
+##########
+# User-specific files
+##########
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.env
+
+##########
+# Build results
+##########
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+[Aa][Rr][Mm]64[Ee][Cc]/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+out/
+
+# More precise bin/obj ignoring
+**/[Bb]in/*
+**/[Oo]bj/*
+
+##########
+# Visual Studio cache/options
+##########
+.vs/
+ipch/
+*.VC.db
+*.VC.VC.opendb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+
+##########
+# Test results / coverage
+##########
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+##########
+# NuGet / packages
+##########
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+##########
+# Publish artifacts (incl. Azure publish profiles)
+##########
+publish/
+*.pubxml
+*.publishproj
+*.[Pp]ublish.xml
+*.azurePubxml
+PublishScripts/
+*.publishsettings
+
+##########
+# Azure/Service Fabric related
+# Note: manifest and XML files of the SF project will be versioned; we ignore only backup/output here.
+##########
+ServiceFabricBackup/
+
+##########
+# Logs / temp / installer artifacts
+##########
+*.log
+*.tlog
+*.tmp
+*.bak
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.binlog
+MSBuild_Logs/
+
+##########
+# VS Code (if used with Visual Studio)
+##########
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+*.vsix
+
+##########
+# Copilot “problematic data” / security
+##########
+**/.copilot/**
+**/*copilot*.log
+**/*copilot*.tmp
+
+# Common local secrets/config
+**/.env
+**/.env.*
+!**/.env.example
+**/*secrets*.json
+**/*secret*.json
+**/*apikey*
+**/*api-key*
+**/*token*
+**/*password*
