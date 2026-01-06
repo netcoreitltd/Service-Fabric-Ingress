@@ -1,3 +1,4 @@
+using FabricIngress.SSL;
 using LettuceEncrypt;
 using LettuceEncrypt.Acme;
 using Microsoft.AspNetCore.RateLimiting;
@@ -39,6 +40,7 @@ namespace ServiceFabricIngress
                         return new WebHostBuilder()
                         .UseKestrel(kestrelOptions =>
                             {
+                                var allowedHosts = kestrelOptions.ApplicationServices.GetRequiredService<AllowedSSLHosts>();
                                 // === A. HARDENING & PERFORMANCE ===
                                 kestrelOptions.AddServerHeader = false; // Security: Nasconde "Server: Kestrel"
 
@@ -79,8 +81,39 @@ namespace ServiceFabricIngress
 
                                         listenOptions.UseHttps(https =>
                                         {
-                                            // Usa LettuceEncrypt (risolto dai servizi DI)
+                                            // Let's run LettuceEncrypt to let it set its selector
                                             https.UseLettuceEncrypt(appServices);
+                                            // now we intercept the selector and extend it to perform our check
+                                            var originalSelector = https.ServerCertificateSelector;
+                                            var allowedHosts = appServices.GetRequiredService<AllowedSSLHosts>();
+                                            // let's replace the selector
+                                            https.ServerCertificateSelector = (connectionContext, domain) =>
+                                            {
+                                                // here we will check if this host is SSL-enabled
+                                                if (!string.IsNullOrEmpty(domain) && !allowedHosts.Contains(domain))
+                                                {
+                                                    // if SSL is not enabled we have two options
+                                                    // option 1 : throw an exception (brutal)
+                                                    // throw new AuthenticationException($"SSL disabled for {domain}");
+                     
+                                                    // option 2 : returns null (Kestrel will attempt to use the default cert
+                                                    // if no default cert is available, it will fail
+
+                                                    // what we want is to avoid anyone to send a request using a
+                                                    // fake domain: that would fail to create the certificate
+                                                    // but it will exhaust our LE monthly limits so we need to close
+                                                    // the connection
+
+                                                     return null;
+                                                }
+
+                                                // if this domain/host is SSL-enabled, we follow the chain and
+                                                // call the original selector
+                                                if (originalSelector != null)
+                                                    return originalSelector(connectionContext, domain);
+
+                                                return null;
+                                            };
                                         });
                                     });
                                 }
@@ -139,6 +172,7 @@ namespace ServiceFabricIngress
                                 services.AddSingleton<ServiceFabricPropertyConfigProvider>();
                                 services.AddSingleton<IProxyConfigProvider>(sp => sp.GetRequiredService<ServiceFabricPropertyConfigProvider>());
                                 services.AddHostedService<ServiceFabricDiscoveryHostedService>();
+                                services.AddSingleton<AllowedSSLHosts>(new AllowedSSLHosts());
 
                                 // Health checks
                                 services.AddHealthChecks();

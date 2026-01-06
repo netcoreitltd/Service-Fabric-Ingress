@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Primitives;
+﻿using FabricIngress.SSL;
+using Microsoft.Extensions.Primitives;
 using Microsoft.ServiceFabric.Services.Client;
 using System.Fabric;
 using System.Fabric.Description;
@@ -15,6 +16,8 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
     private readonly FabricClient _fabricClient;
     private readonly ILogger<ServiceFabricPropertyConfigProvider> _logger;
     private readonly StatelessServiceContext _sfContext;
+    private readonly AllowedSSLHosts _allowedSslHosts;
+
     public DateTimeOffset LastRefreshUtc { get; private set; } = DateTimeOffset.MinValue;
     public string? LastRefreshError { get; private set; }
 
@@ -25,12 +28,14 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
     private CancellationTokenSource _changeCts = new();
 
     public ServiceFabricPropertyConfigProvider(
+        AllowedSSLHosts allowedSslHosts,
         StatelessServiceContext sfContext,
         ILogger<ServiceFabricPropertyConfigProvider> logger)
     {
         _sfContext = sfContext;
         _logger = logger;
         _fabricClient = new FabricClient();
+        _allowedSslHosts = allowedSslHosts;
 
         // Config iniziale: valida e "vuota", ma con ChangeToken NON nullo
         _current = new ProxyConfigSnapshot(
@@ -99,6 +104,8 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
 
         // Elenca le applicazioni
         var apps = await _fabricClient.QueryManager.GetApplicationListAsync();
+        // keep a list of SSL-enabled hosts
+        var allSSLAllowedHosts = new List<string>();
         foreach (var app in apps)
         {
             ct.ThrowIfCancellationRequested();
@@ -127,7 +134,9 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
                     _logger.LogWarning("Skipping service {ServiceName}: no destinations resolved.", svc.ServiceName);
                     continue;
                 }
-
+                // add hosts to the SSL inventory if needed
+                if (settings.SslEnabled && settings.Hosts != null)
+                    allSSLAllowedHosts.AddRange(settings.Hosts);
                 // --- CLUSTER CONFIG ---
                 var clusterConfig = new ClusterConfig
                 {
@@ -233,6 +242,8 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
             });
         }
 
+        // set SSL-allowed hosts list
+        _allowedSslHosts.Update(allSSLAllowedHosts);
 
         return (routes, clusters);
     }
@@ -297,6 +308,9 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
 
         // http version
         s.HttpVersion = await TryGetPropertyAsync(serviceName, "Yarp.HttpVersion", ct);
+        // is SSL requested / enabled?
+        var sslVal = await TryGetPropertyAsync(serviceName, "Yarp.Ssl.Enabled", ct);
+        s.SslEnabled = string.Equals(sslVal, "true", StringComparison.OrdinalIgnoreCase);
 
         return s;
     }
@@ -417,6 +431,7 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
         public bool HealthCheckEnabled { get; set; }
         public string? HealthCheckPath { get; set; }     // es. "/api/health"
         public string? HttpVersion { get; set; } // "1.1", "2", "3"
+        public bool SslEnabled { get; set; }
     }
 
     // Snapshot immutabile richiesta da YARP: Routes/Clusters + ChangeToken NON nullo
