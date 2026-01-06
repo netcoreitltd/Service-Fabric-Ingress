@@ -86,7 +86,7 @@ namespace ServiceFabricIngress
                                             // now we intercept the selector and extend it to perform our check
                                             var originalSelector = https.ServerCertificateSelector;
                                             var allowedHosts = appServices.GetRequiredService<AllowedSSLHosts>();
-                                            // let's replace the selector
+                                            //// let's replace the selector
                                             https.ServerCertificateSelector = (connectionContext, domain) =>
                                             {
                                                 // here we will check if this host is SSL-enabled
@@ -125,6 +125,19 @@ namespace ServiceFabricIngress
                             })
                             .ConfigureServices(services =>
                             {
+                                // enable logging
+                                services.AddLogging(logging =>
+                                {
+                                    logging.ClearProviders();
+                                    logging.AddConsole(); // Allows you to see logs in the console window (if running local/container)
+                                    logging.AddDebug();   // Allows you to see logs in Visual Studio Output window
+    
+                                    // KEY PART: Enable Debug logs for LettuceEncrypt
+                                    logging.AddFilter("LettuceEncrypt", LogLevel.Debug);
+    
+                                    // Also useful to see Kestrel's handshake decisions
+                                    logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
+                                });
                                 services.AddSingleton<StatelessServiceContext>(serviceContext);
                                 // Get Service Fabric context and config
                                 var config = serviceContext.CodePackageActivationContext.GetConfigurationPackageObject("Config");
