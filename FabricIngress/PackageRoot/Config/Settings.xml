@@ -7,6 +7,6 @@
 		<Parameter Name="PfxPassword" Value="P@sswordForPFX!" />
 		<!-- === LOGGING SETTING === -->
 		<!-- Options: "Debug", "Information", "Fatal" (or "Off") -->
-		<Parameter Name="FileLoggingLevel" Value="Information" />
+		<Parameter Name="FileLoggingLevel" Value="Off" />
 	</Section>	
 </Settings>

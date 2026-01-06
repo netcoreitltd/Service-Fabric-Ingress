@@ -10,7 +10,7 @@
        should match the Name and Version attributes of the ServiceManifest element defined in the 
        ServiceManifest.xml file. -->
   <ServiceManifestImport>
-    <ServiceManifestRef ServiceManifestName="FabricIngressPkg" ServiceManifestVersion="1.6.5" />
+    <ServiceManifestRef ServiceManifestName="FabricIngressPkg" ServiceManifestVersion="1.7.0" />
     <ConfigOverrides>
       <ConfigOverride Name="Config">
         <Settings>
