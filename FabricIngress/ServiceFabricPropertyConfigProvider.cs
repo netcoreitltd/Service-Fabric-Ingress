@@ -17,6 +17,10 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
     private readonly ILogger<ServiceFabricPropertyConfigProvider> _logger;
     private readonly StatelessServiceContext _sfContext;
     private readonly AllowedSSLHosts _allowedSslHosts;
+    private readonly IHostApplicationLifetime _appLifetime;
+
+    // snapshot of hosts known at startup. This is our "Immutable Baseline".
+    private readonly HashSet<string> _startupSslHosts;
 
     public DateTimeOffset LastRefreshUtc { get; private set; } = DateTimeOffset.MinValue;
     public string? LastRefreshError { get; private set; }
@@ -29,6 +33,7 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
 
     public ServiceFabricPropertyConfigProvider(
         AllowedSSLHosts allowedSslHosts,
+        IHostApplicationLifetime appLifetime,
         StatelessServiceContext sfContext,
         ILogger<ServiceFabricPropertyConfigProvider> logger)
     {
@@ -36,6 +41,11 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
         _logger = logger;
         _fabricClient = new FabricClient();
         _allowedSslHosts = allowedSslHosts;
+        _appLifetime = appLifetime;
+
+        // capture the startup state immediately. 
+        // we will compare against THIS set to decide if we need to restart.
+        _startupSslHosts = _allowedSslHosts.GetAll().ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // Config iniziale: valida e "vuota", ma con ChangeToken NON nullo
         _current = new ProxyConfigSnapshot(
@@ -49,19 +59,40 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
     /// <summary>
     /// Richiamato dal polling service. Carica config e, se diversa, segnala change.
     /// </summary>
+    //public async Task RefreshAsync(CancellationToken ct)
+    //{
+    //    ct.ThrowIfCancellationRequested();
+
+    //    var (routes, clusters) = await BuildConfigAsync(ct);
+
+    //    // Facoltativo: evita reload continui se uguale (qui facciamo solo un check semplice)
+    //    if (ReferenceEquals(routes, _current.Routes) && ReferenceEquals(clusters, _current.Clusters))
+    //    {
+    //        return;
+    //    }
+
+    //    ApplyNewConfig(routes, clusters);
+    //}
+
+    /// <summary>
+    /// Richiamato dal polling service. Carica config e, se diversa, segnala change.
+    /// </summary>
     public async Task RefreshAsync(CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested();
-
-        var (routes, clusters) = await BuildConfigAsync(ct);
-
-        // Facoltativo: evita reload continui se uguale (qui facciamo solo un check semplice)
-        if (ReferenceEquals(routes, _current.Routes) && ReferenceEquals(clusters, _current.Clusters))
+        try
         {
-            return;
-        }
+            await UpdateConfigInternalAsync(ct);
 
-        ApplyNewConfig(routes, clusters);
+            LastRefreshUtc = DateTimeOffset.UtcNow;
+            LastRefreshError = null;
+        }
+        catch (Exception ex)
+        {
+            // Suppress transient errors in polling loop, but log them
+            LastRefreshError = ex.Message;
+            _logger.LogError(ex, "Error during automatic configuration refresh.");
+            // Do NOT throw, or the poller might crash
+        }
     }
 
     private void ApplyNewConfig(IReadOnlyList<RouteConfig> routes, IReadOnlyList<ClusterConfig> clusters)
@@ -93,10 +124,12 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
     }
 
     // 2) Costruzione config: qui dentro fai discovery + properties
-    private async Task<(IReadOnlyList<RouteConfig> routes, IReadOnlyList<ClusterConfig> clusters)> BuildConfigAsync(CancellationToken ct)
+    private async Task<(IReadOnlyList<RouteConfig> routes, IReadOnlyList<ClusterConfig> clusters, 
+        List<string> detectedSslHosts)> BuildConfigAsync(CancellationToken ct)
     {
         var routes = new List<RouteConfig>();
         var clusters = new List<ClusterConfig>();
+        var detectedSslHosts = new List<string>(); // Allowed hosts for SSL
 
         // --- TEST ROUTE da properties del gateway (scritte dall'admin endpoint) ---
         var testDestination = await TryGetPropertyAsync(_sfContext.ServiceName, "Yarp.TestDestination", ct);
@@ -136,7 +169,14 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
                 }
                 // add hosts to the SSL inventory if needed
                 if (settings.SslEnabled && settings.Hosts != null)
+                {
                     allSSLAllowedHosts.AddRange(settings.Hosts);
+                    foreach (var h in settings.Hosts)
+                    {
+                        if (!string.IsNullOrWhiteSpace(h))
+                            detectedSslHosts.Add(h);
+                    }
+                }
                 // --- CLUSTER CONFIG ---
                 var clusterConfig = new ClusterConfig
                 {
@@ -205,17 +245,7 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
             }
         }
 
-        //// test only
-        //// --- TEST ROUTE (backend esterno) ---
-        //var testDestination = await TryGetPropertyAsync(
-        //    new Uri("fabric:/Netcore.ASF.GenericGateway/GenericGateway"), // <-- cambia col nome reale del tuo servizio gateway
-        //    "Yarp.TestDestination",
-        //    ct);
 
-        //var testHost = await TryGetPropertyAsync(
-        //    new Uri("fabric:/Netcore.ASF.GenericGateway/GenericGateway"),
-        //    "Yarp.TestHost",
-        //    ct);
 
         if (!string.IsNullOrWhiteSpace(testDestination) && !string.IsNullOrWhiteSpace(testHost))
         {
@@ -245,34 +275,9 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
         // set SSL-allowed hosts list
         _allowedSslHosts.Update(allSSLAllowedHosts);
 
-        return (routes, clusters);
+        //return (routes, clusters);
+        return (routes, clusters, detectedSslHosts);
     }
-
-    //private async Task<YarpSettings?> TryGetYarpSettingsFromPropertiesAsync(Uri serviceName, CancellationToken ct)
-    //{
-    //    // Abilitazione tramite property manager: Yarp.Enable = "true"
-    //    // Se non c'è, considera non esposto.
-    //    var enabled = await TryGetPropertyAsync(serviceName, "Yarp.Enable", ct);
-    //    if (!string.Equals(enabled, "true", StringComparison.OrdinalIgnoreCase))
-    //        return null;
-
-    //    var hosts = await TryGetPropertyAsync(serviceName, "Yarp.Hosts", ct);
-    //    var path = await TryGetPropertyAsync(serviceName, "Yarp.Path", ct);
-    //    var orderStr = await TryGetPropertyAsync(serviceName, "Yarp.Order", ct);
-
-    //    int order = 0;
-    //    _ = int.TryParse(orderStr, out order);
-
-    //    return new YarpSettings
-    //    {
-    //        Enabled = true,
-    //        Hosts = string.IsNullOrWhiteSpace(hosts)
-    //            ? Array.Empty<string>()
-    //            : hosts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-    //        Path = path,
-    //        Order = order
-    //    };
-    //}
 
     private async Task<YarpSettings?> TryGetYarpSettingsFromPropertiesAsync(Uri serviceName, CancellationToken ct)
     {
@@ -399,13 +404,35 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
     /// </summary>
     /// <param name="ct"></param>
     /// <returns></returns>
+    //public async Task ReloadAsync(CancellationToken ct)
+    //{
+    //    try
+    //    {
+    //        ct.ThrowIfCancellationRequested();
+    //        var (routes, clusters) = await BuildConfigAsync(ct);
+    //        ApplyNewConfig(routes, clusters);
+    //        LastRefreshUtc = DateTimeOffset.UtcNow;
+    //        LastRefreshError = null;
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        LastRefreshUtc = DateTimeOffset.UtcNow;
+    //        LastRefreshError = ex.ToString();
+    //        throw;
+    //    }
+    //}
+
+    /// <summary>
+    /// Rebuild config
+    /// </summary>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     public async Task ReloadAsync(CancellationToken ct)
     {
         try
         {
-            ct.ThrowIfCancellationRequested();
-            var (routes, clusters) = await BuildConfigAsync(ct);
-            ApplyNewConfig(routes, clusters);
+            await UpdateConfigInternalAsync(ct);
+
             LastRefreshUtc = DateTimeOffset.UtcNow;
             LastRefreshError = null;
         }
@@ -413,8 +440,64 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
         {
             LastRefreshUtc = DateTimeOffset.UtcNow;
             LastRefreshError = ex.ToString();
-            throw;
+            _logger.LogError(ex, "Error during manual configuration reload.");
+            throw; // Throw here so the Admin API receives the 500 Error
         }
+    }
+
+    /// <summary>
+    /// Used by RefreshAsync and ReloadAsync to update configuration and handle new SSL domains.
+    /// </summary>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    private async Task UpdateConfigInternalAsync(CancellationToken ct)
+    {
+        // 1. Build new config and get detected SSL hosts
+        var (routes, clusters, detectedSslHosts) = await BuildConfigAsync(ct);
+
+        // 2. CHECK FOR NEW SSL DOMAINS (The Restart Logic)
+        // Compare detected hosts vs what we loaded at Startup
+        // var startupSslHosts = _allowedSslHosts.GetAll();
+        var detectedSet = new HashSet<string>(detectedSslHosts, StringComparer.OrdinalIgnoreCase);
+
+        // If we found a domain that is NOT in the startup set, we must restart
+        if (!detectedSet.IsSubsetOf(_startupSslHosts))
+        {
+            var newDomains = detectedSet.Except(_startupSslHosts);
+            _logger.LogWarning("New SSL Domains detected: {Domains}. Triggering graceful restart...", string.Join(",", newDomains));
+
+            // Trigger Restart in background (Fire-and-forget)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Wait for YARP update to propagate
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+
+                    // Stop accepting new connections
+                    _appLifetime.StopApplication();
+
+                    // Drain period
+                    await Task.Delay(TimeSpan.FromSeconds(5));
+
+                    // Die
+                    Environment.Exit(42);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Graceful restart failed. Forcing exit.");
+                    Environment.Exit(-1);
+                }
+            });
+        }
+
+        // update the Singleton (so runtime checks pass immediately for the new domain before restart)
+        _allowedSslHosts.Update(detectedSslHosts);
+
+        // optimization: Check if YARP config actually changed before swapping
+        // (Optional: You can use deep comparison or hash, currently we rely on reference or simply always update)
+        // For simplicity/safety with dynamic tokens, we always apply if we got this far.
+        ApplyNewConfig(routes, clusters);
     }
 
     private sealed class YarpSettings

@@ -1,4 +1,5 @@
 using Microsoft.ServiceFabric.Services.Runtime;
+using Serilog;
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -23,6 +24,16 @@ internal static class Program
                 context => new FabricIngress(context)).GetAwaiter().GetResult();
 
             ServiceEventSource.Current.ServiceTypeRegistered(Process.GetCurrentProcess().Id, typeof(FabricIngress).Name);
+
+            // add logging
+            // In Main or CreateServiceInstanceListeners
+            // Setup Serilog globally
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Debug() // Capture everything
+                .WriteTo.File("C:\\SFCertificates\\FabricIngress.log",
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 7)
+                .CreateLogger();
 
             // Prevents this host process from terminating so services keeps running. 
             Thread.Sleep(Timeout.Infinite);
