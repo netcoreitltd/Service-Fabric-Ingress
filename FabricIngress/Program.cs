@@ -28,12 +28,12 @@ internal static class Program
             // add logging
             // In Main or CreateServiceInstanceListeners
             // Setup Serilog globally
-            Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Debug() // Capture everything
-                .WriteTo.File("C:\\SFCertificates\\FabricIngress.log",
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 7)
-                .CreateLogger();
+            //Log.Logger = new LoggerConfiguration()
+            //    .MinimumLevel.Debug() // Capture everything
+            //    .WriteTo.File("C:\\SFCertificates\\FabricIngress.log",
+            //        rollingInterval: RollingInterval.Day,
+            //        retainedFileCountLimit: 7)
+            //    .CreateLogger();
 
             // Prevents this host process from terminating so services keeps running. 
             Thread.Sleep(Timeout.Infinite);
