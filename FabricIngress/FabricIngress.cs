@@ -38,7 +38,7 @@ namespace ServiceFabricIngress
                 new ServiceInstanceListener(serviceContext =>
                 {
                     // 1. PRE-LOAD SSL HOSTS (Blocking Call)
-                    // We verify all services in the cluster to build the initial whitelist for LettuceEncrypt.
+                    // We verify all services in the cluster to build the initial whitelist for ACME Initial Domains.
                     var sslHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     var fabricClient = new FabricClient();
 
@@ -149,7 +149,7 @@ namespace ServiceFabricIngress
                                             listenOptions.UseHttps(https =>
                                             {
                                                 // Let's run LettuceEncrypt to let it set its selector
-                                                https.UseLettuceEncrypt(appServices);
+                                                // https.UseLettuceEncrypt(appServices);
                                                 // now we intercept the selector and extend it to perform our check
                                                 var originalSelector = https.ServerCertificateSelector;
                                                 var allowedHosts = appServices.GetRequiredService<AllowedSSLHosts>();
@@ -176,21 +176,22 @@ namespace ServiceFabricIngress
 
                                                     // if this domain/host is SSL-enabled, we follow the chain and
                                                     // call the original selector
-                                                    if (originalSelector != null)
-                                                        return originalSelector(connectionContext, domain);
+                                                    //if (originalSelector != null)
+                                                    //    return originalSelector(connectionContext, domain);
 
-                                                    return null;
+                                                    //return null;
+                                                    return AcmeCertificateManager.GetCertificate(domain);
                                                 };
                                             });
                                         });
                                     }
 
                                 })
-                                .ConfigureAppConfiguration((hostingContext, config) =>
+                            .ConfigureAppConfiguration((hostingContext, config) =>
                                 {
                                     config.AddEnvironmentVariables(); // OTEL_EXPORTER_OTLP_ENDPOINT arriva qui
                                 })
-                                .ConfigureServices(services =>
+                            .ConfigureServices(services =>
                                 {
                                     // enable logging
                                     //services.AddLogging(logging =>
@@ -246,7 +247,7 @@ namespace ServiceFabricIngress
                                         var loggerConfig = new LoggerConfiguration()
                                             .MinimumLevel.Debug() // Global minimum (allows Debug to flow to sinks if they want it)
                                             .Enrich.FromLogContext()
-                                            .WriteTo.Console();
+                                            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}");
 
                                         loggerConfig.WriteTo.File(
                                             path: logFileName,
@@ -260,7 +261,8 @@ namespace ServiceFabricIngress
                                         loggingBuilder.AddSerilog(logger, dispose: true);
 
                                         // Filters
-                                        loggingBuilder.AddFilter("LettuceEncrypt", LogLevel.Debug);
+                                        // loggingBuilder.AddFilter("LettuceEncrypt", LogLevel.Debug);
+                                        services.AddHostedService<AcmeCertificateManager>();
                                         loggingBuilder.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
                                     });
 
@@ -343,14 +345,14 @@ namespace ServiceFabricIngress
                                     //    options.AcceptTermsOfService = acceptTerms;
                                     //    options.AllowedChallengeTypes = ChallengeType.Http01; // accept HTTP connections only
                                     //})
-                                    services.AddLettuceEncrypt(options =>
-                                    {
-                                       options.DomainNames = sslHosts.ToArray();
-                                       options.AcceptTermsOfService = true;
-                                       options.EmailAddress = email;
-                                       options.AllowedChallengeTypes = ChallengeType.Http01; // accept HTTP connections only
-                                    })
-                                    .PersistDataToDirectory(new DirectoryInfo(certPath), password);
+                                    //services.AddLettuceEncrypt(options =>
+                                    //{
+                                    //   options.DomainNames = sslHosts.ToArray();
+                                    //   options.AcceptTermsOfService = true;
+                                    //   options.EmailAddress = email;
+                                    //   options.AllowedChallengeTypes = ChallengeType.Http01; // accept HTTP connections only
+                                    //})
+                                    //.PersistDataToDirectory(new DirectoryInfo(certPath), password);
 
                                     // register the Singleton for the Runtime Watcher to compare against
                                     services.AddSingleton(new AllowedSSLHosts(sslHosts));
@@ -362,7 +364,7 @@ namespace ServiceFabricIngress
                                         tracing
                                             .AddAspNetCoreInstrumentation()
                                             .AddHttpClientInstrumentation()
-                                            .AddSource("Yarp.ReverseProxy"); // activity source di YARP [web:767]
+                                            .AddSource("Yarp.ReverseProxy"); // activity source di YARP
 
                                         // Feature flag: esporta solo se configurato
                                         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
@@ -378,8 +380,9 @@ namespace ServiceFabricIngress
                                     //    });
                                     //});
                                 })
-                                .Configure(app =>
+                            .Configure(app =>
                                 {
+                                    // enable rate limiting
                                     app.UseRateLimiter();
                                     app.UseRouting();
                                     app.Use(async (context, next) =>
@@ -594,9 +597,33 @@ namespace ServiceFabricIngress
                                                 });
                                             }
                                         });
+                                        // SSL ACME challenge
+                                        endpoints.MapGet("/.well-known/acme-challenge/{token}", async context =>
+                                        {
+                                            var token = context.GetRouteValue("token") as string;
+                                        
+                                            // Must match AcmeCertificateManager path
+                                            var certPath = Environment.GetEnvironmentVariable("FabricIngress_CertPath") ?? @"C:\SFCertificates";
+                                            var filePath = Path.Combine(certPath, token);
 
-                                        // enable rate limiting
-                                        app.UseRateLimiter();
+                                            // Security: Alphanumeric only
+                                            if (string.IsNullOrWhiteSpace(token) || token.Any(c => !char.IsLetterOrDigit(c) && c != '-' && c != '_'))
+                                            {
+                                                context.Response.StatusCode = 404; return;
+                                            }
+
+                                            if (File.Exists(filePath))
+                                            {
+                                                var content = await File.ReadAllTextAsync(filePath);
+                                                context.Response.ContentType = "application/octet-stream";
+                                                await context.Response.WriteAsync(content);
+                                            }
+                                            else
+                                            {
+                                                context.Response.StatusCode = 404;
+                                            }
+                                        });
+                                        // app.UseRateLimiter();
                                         endpoints.MapReverseProxy();
                                     });
                                 })
