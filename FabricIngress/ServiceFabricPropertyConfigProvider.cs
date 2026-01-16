@@ -227,6 +227,14 @@ public sealed class ServiceFabricPropertyConfigProvider : IProxyConfigProvider
                         Hosts = settings.Hosts,               // es. ["api.contoso.com"]
                         Path = settings.Path ?? "/{**catch-all}"
                     },
+                    // preserve original host
+                    Transforms = new[]
+                    {
+                        new Dictionary<string, string>
+                        {
+                            { "RequestHeaderOriginalHost", "true" }
+                        }
+                    },
                     RateLimiterPolicy = settings.RateLimiterPolicy,
                     Order = settings.Order
                 });
